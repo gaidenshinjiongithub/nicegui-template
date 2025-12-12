@@ -3,12 +3,16 @@ import random
 import zipfile
 import os
 from pathlib import Path
+import time
 
 # Global state
 current_index = 0
 running_count = 0
 deck = []
 card_values = {}
+start_time = None
+elapsed_time = 0
+timer_running = False
 
 # Serve cards directory as static files for faster loading
 app.add_static_files('/cards', 'cards')
@@ -97,11 +101,27 @@ def update_count_display():
     else:
         true_label.classes('text-gray-600', remove='text-green-600 text-red-600')
 
+def update_timer():
+    """Update the timer display"""
+    global elapsed_time, start_time, timer_running
+    
+    if timer_running and start_time:
+        elapsed_time = time.time() - start_time
+        minutes = int(elapsed_time // 60)
+        seconds = int(elapsed_time % 60)
+        timer_label.text = f'Time: {minutes:02d}:{seconds:02d}'
+
 def next_card():
     """Switch to next card in deck"""
-    global current_index, running_count
+    global current_index, running_count, start_time, timer_running
     
     if current_index < len(deck):
+        # Start timer on first card
+        if current_index == 0:
+            start_time = time.time()
+            timer_running = True
+            timer.activate()
+        
         card = deck[current_index]
         running_count += card['value']
         current_index += 1
@@ -120,16 +140,22 @@ def next_card():
             
             # Check if deck is finished
             if current_index >= len(deck):
+                timer_running = False
+                timer.deactivate()
                 next_btn.disable()
-                ui.notify('Deck Complete!', type='positive')
+                ui.notify(f'Deck Complete! Time: {int(elapsed_time // 60):02d}:{int(elapsed_time % 60):02d}', type='positive')
                 card_label.text = 'Deck Complete!'
 
 def reset_game():
     """Reset the game to initial state"""
-    global current_index, running_count
+    global current_index, running_count, start_time, elapsed_time, timer_running
     
     current_index = 0
     running_count = 0
+    start_time = None
+    elapsed_time = 0
+    timer_running = False
+    timer.deactivate()
     initialize_deck()
     
     # Reset UI
@@ -139,6 +165,7 @@ def reset_game():
     card_image.set_visibility(False)
     running_label.text = 'Running Count: 0'
     true_label.text = 'True Count: 0.0'
+    timer_label.text = 'Time: 00:00'
     true_label.classes('text-gray-600', remove='text-green-600 text-red-600')
     next_btn.enable()
     
@@ -146,7 +173,7 @@ def reset_game():
 
 def main():
     """Main application setup"""
-    global card_label, rank_label, running_label, true_label, next_btn, card_image
+    global card_label, rank_label, running_label, true_label, next_btn, card_image, timer_label, timer
     
     # Initialize deck
     initialize_deck()
@@ -161,11 +188,16 @@ def main():
         # Header
         ui.label('Card Counting Trainer').classes('text-3xl font-bold mb-4')
         
-        # Count display - Always visible at top
+        # Count display and timer - Always visible at top
         with ui.card().classes('w-full max-w-md'):
-            with ui.row().classes('w-full justify-around'):
+            with ui.row().classes('w-full justify-around items-center'):
                 running_label = ui.label('Running Count: 0').classes('text-xl font-bold')
                 true_label = ui.label('True Count: 0.0').classes('text-xl font-bold text-gray-600')
+            with ui.row().classes('w-full justify-center mt-2'):
+                timer_label = ui.label('Time: 00:00').classes('text-2xl font-bold text-blue-600')
+        
+        # Timer that updates every 100ms when active
+        timer = ui.timer(0.1, update_timer, active=False)
         
         # Card display area
         with ui.card().classes('w-full max-w-md min-h-64 items-center justify-center'):
