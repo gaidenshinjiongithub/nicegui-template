@@ -13,6 +13,7 @@ card_values = {}
 start_time = None
 elapsed_time = 0
 timer_running = False
+elimination_mode = False
 
 # Serve cards directory as static files for faster loading
 app.add_static_files('/cards', 'cards')
@@ -122,29 +123,59 @@ def next_card():
             timer_running = True
             timer.activate()
         
-        card = deck[current_index]
-        running_count += card['value']
-        current_index += 1
-        
-        # Update card display
-        if current_index <= len(deck):
-            card_label.text = f"Card {current_index} of {len(deck)}"
+        if elimination_mode:
+            # Show two cards at once
+            card1 = deck[current_index]
+            running_count += card1['value']
+            current_index += 1
             
-            # Display card image using static URL
+            # Check if there's a second card
+            if current_index < len(deck):
+                card2 = deck[current_index]
+                running_count += card2['value']
+                current_index += 1
+                
+                # Calculate net count for these two cards
+                net_count = card1['value'] + card2['value']
+                
+                # Update card display
+                card_label.text = f"Cards {current_index - 1} & {current_index} of {len(deck)} (Net: {net_count:+d})"
+                
+                # Display both card images
+                card_image.source = card1['url']
+                card_image.set_visibility(True)
+                card_image2.source = card2['url']
+                card_image2.set_visibility(True)
+                rank_label.set_visibility(False)
+            else:
+                # Only one card left (odd number)
+                card_label.text = f"Card {current_index} of {len(deck)}"
+                card_image.source = card1['url']
+                card_image.set_visibility(True)
+                card_image2.set_visibility(False)
+                rank_label.set_visibility(False)
+        else:
+            # Single card mode
+            card = deck[current_index]
+            running_count += card['value']
+            current_index += 1
+            
+            card_label.text = f"Card {current_index} of {len(deck)}"
             card_image.source = card['url']
             card_image.set_visibility(True)
+            card_image2.set_visibility(False)
             rank_label.set_visibility(False)
-            
-            # Update count display
-            update_count_display()
-            
-            # Check if deck is finished
-            if current_index >= len(deck):
-                timer_running = False
-                timer.deactivate()
-                next_btn.disable()
-                ui.notify(f'Deck Complete! Time: {int(elapsed_time // 60):02d}:{int(elapsed_time % 60):02d}', type='positive')
-                card_label.text = 'Deck Complete!'
+        
+        # Update count display
+        update_count_display()
+        
+        # Check if deck is finished
+        if current_index >= len(deck):
+            timer_running = False
+            timer.deactivate()
+            next_btn.disable()
+            ui.notify(f'Deck Complete! Time: {int(elapsed_time // 60):02d}:{int(elapsed_time % 60):02d}', type='positive')
+            card_label.text = 'Deck Complete!'
 
 def reset_game():
     """Reset the game to initial state"""
@@ -163,6 +194,7 @@ def reset_game():
     rank_label.text = 'Click Next or press Space'
     rank_label.set_visibility(True)
     card_image.set_visibility(False)
+    card_image2.set_visibility(False)
     running_label.text = 'Running Count: 0'
     true_label.text = 'True Count: 0.0'
     timer_label.text = 'Time: 00:00'
@@ -171,9 +203,21 @@ def reset_game():
     
     ui.notify('Game Reset', type='info')
 
+def toggle_elimination_mode():
+    """Toggle between single card and elimination (two cards) mode"""
+    global elimination_mode
+    elimination_mode = not elimination_mode
+    
+    # Reset game when switching modes
+    reset_game()
+    
+    mode_text = "Elimination Mode (2 cards)" if elimination_mode else "Single Card Mode"
+    ui.notify(f'Switched to {mode_text}', type='info')
+    mode_toggle.text = mode_text
+
 def main():
     """Main application setup"""
-    global card_label, rank_label, running_label, true_label, next_btn, card_image, timer_label, timer
+    global card_label, rank_label, running_label, true_label, next_btn, card_image, card_image2, timer_label, timer, mode_toggle
     
     # Initialize deck
     initialize_deck()
@@ -187,6 +231,9 @@ def main():
     with ui.column().classes('w-full items-center p-4 gap-4'):
         # Header
         ui.label('Card Counting Trainer').classes('text-3xl font-bold mb-4')
+        
+        # Mode toggle
+        mode_toggle = ui.button('Single Card Mode', on_click=toggle_elimination_mode).classes('px-4 py-2')
         
         # Count display and timer - Always visible at top
         with ui.card().classes('w-full max-w-md'):
@@ -202,9 +249,12 @@ def main():
         # Card display area
         with ui.card().classes('w-full max-w-md min-h-64 items-center justify-center'):
             card_label = ui.label('Ready to Start').classes('text-2xl font-bold text-center')
-            # Card image (hidden initially) - smaller size
-            card_image = ui.image('').classes('w-48 h-auto mt-4')
-            card_image.set_visibility(False)
+            # Card images side by side for elimination mode
+            with ui.row().classes('gap-4 items-center justify-center'):
+                card_image = ui.image('').classes('w-48 h-auto mt-4')
+                card_image.set_visibility(False)
+                card_image2 = ui.image('').classes('w-48 h-auto mt-4')
+                card_image2.set_visibility(False)
             # Text fallback (visible initially)
             rank_label = ui.label('Click Next or press Space').classes('text-lg text-center mt-4')
         
@@ -224,6 +274,10 @@ def main():
             **Running Count:** Sum of all card values seen
             
             **True Count:** Running count divided by decks remaining
+            
+            **Game Modes:**
+            - **Single Card Mode:** Practice one card at a time
+            - **Elimination Mode:** See two cards at once (simulates real play where cards cancel out)
             
             **Controls:**
             - Click "Next Card" or press Space to advance
